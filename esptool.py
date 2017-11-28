@@ -33,7 +33,7 @@ import zlib
 
 import serial
 
-__version__ = "2.2"
+__version__ = "2.3-dev"
 
 MAX_UINT32 = 0xffffffff
 MAX_UINT24 = 0xffffff
@@ -186,7 +186,7 @@ class ESPLoader(object):
         if isinstance(port, serial.Serial):
             self._port = port
         else:
-            self._port = serial.serial_for_url(port)
+            self._port = serial.serial_for_url(port, timeout=DEFAULT_TIMEOUT)
         self._slip_reader = slip_reader(self._port, self.trace)
         # setting baud rate in a separate step is a workaround for
         # CH341 driver on some Linux versions (this opens at 9600 then
@@ -1597,6 +1597,20 @@ class ELFFile(object):
         self.sections = prog_sections
 
 
+def read_with_partial_timeouts(port, length):
+    saved_timeout = port.timeout
+    timeout = port.timeout
+    try:
+        while True:
+            port.timeout = min(timeout, 0.5)
+            timeout -= port.timeout
+            r = port.read(length)
+            if len(r) > 0 or timeout <= 0.0:
+                return r
+    finally:
+        port.timeout = saved_timeout
+
+
 def slip_reader(port, trace_function):
     """Generator to read SLIP packets from a serial port.
     Yields one full SLIP packet at a time, raises exception on timeout or invalid data.
@@ -1608,7 +1622,8 @@ def slip_reader(port, trace_function):
     in_escape = False
     while True:
         waiting = port.inWaiting()
-        read_bytes = port.read(1 if waiting == 0 else waiting)
+        read_len = 1 if waiting == 0 else waiting
+        read_bytes = read_with_partial_timeouts(port, read_len)
         if read_bytes == b'':
             waiting_for = "header" if partial_packet is None else "content"
             trace_function("Timed out waiting for packet %s", waiting_for)
