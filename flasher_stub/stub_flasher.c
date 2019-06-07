@@ -40,16 +40,6 @@
 
 #define UART_RX_INTS (UART_RXFIFO_FULL_INT_ENA | UART_RXFIFO_TOUT_INT_ENA)
 
-
-#ifdef ESP32
-/* ESP32 register naming is a bit more consistent */
-#define UART_INT_CLR(X) UART_INT_CLR_REG(X)
-#define UART_INT_ST(X) UART_INT_ST_REG(X)
-#define UART_INT_ENA(X) UART_INT_ENA_REG(X)
-#define UART_STATUS(X) UART_STATUS_REG(X)
-#define UART_FIFO(X) UART_FIFO_REG(X)
-#endif
-
 static uint32_t get_new_uart_divider(uint32_t current_baud, uint32_t new_baud)
 {
   uint32_t master_freq;
@@ -60,7 +50,7 @@ static uint32_t get_new_uart_divider(uint32_t current_baud, uint32_t new_baud)
   */
   uint32_t uart_reg = REG_READ(UART_CLKDIV_REG(0));
   uint32_t uart_div = uart_reg & UART_CLKDIV_M;
-#ifdef ESP32
+#if defined(ESP32) || defined(ESP32S2)
   // account for fractional part of divider (bottom 4 bits)
   uint32_t fraction = (uart_reg >> UART_CLKDIV_FRAG_S) & UART_CLKDIV_FRAG_V;
   uart_div = (uart_div << 4) + fraction;
@@ -121,7 +111,7 @@ static void uart_isr_receive(char byte)
 void uart_isr(void *arg) {
   uint32_t int_st = READ_PERI_REG(UART_INT_ST(0));
   while (1) {
-    uint32_t fifo_len = READ_PERI_REG(UART_STATUS(0)) & 0xff;
+    uint32_t fifo_len = READ_PERI_REG(UART_STATUS(0)) & UART_RXFIFO_CNT_M;
     if (fifo_len == 0) {
       break;
     }
@@ -334,7 +324,7 @@ void cmd_loop() {
         /* passing 0 as parameter for ESP_FLASH_END means reboot now */
         if (data_words[0] == 0) {
           /* Flush the FLASH_END response before rebooting */
-#ifdef ESP32
+#if defined(ESP32) || defined(ESP32S2)
           uart_tx_flush(0);
 #endif
           ets_delay_us(10000);
@@ -346,7 +336,7 @@ void cmd_loop() {
               void (*entrypoint_fn)(void) = (void (*))data_words[1];
               /* Make sure the command response has been flushed out
                  of the UART before we run the new code */
-#ifdef ESP32
+#if defined(ESP32) || defined(ESP32S2)
               uart_tx_flush(0);
 #endif
               ets_delay_us(1000);

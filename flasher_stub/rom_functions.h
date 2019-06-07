@@ -97,7 +97,7 @@ typedef struct {
 } esp_rom_spiflash_chip_t;
 
 /* Some ESP32-only ROM functions */
-#ifdef ESP32
+#if defined(ESP32) || defined(ESP32S2)
 uint32_t ets_get_detected_xtal_freq(void);
 void uart_tx_flush(int uart);
 uint32_t ets_efuse_get_spiconfig(void);
@@ -110,7 +110,11 @@ int_handler_t ets_isr_attach(uint32_t int_num, int_handler_t handler,
 
 /* Note: this is a static function whose first argument was elided by the
    compiler. */
+#ifdef ESP32S2
+SpiFlashOpResult SPI_read_status_high(esp_rom_spiflash_chip_t *spi, uint32_t *status);
+#else
 SpiFlashOpResult SPI_read_status_high(uint32_t *status);
+#endif
 
 SpiFlashOpResult SPI_write_status(esp_rom_spiflash_chip_t *spi, uint32_t status_value);
 

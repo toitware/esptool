@@ -251,7 +251,7 @@ class TestFlashing(EsptoolTestCase):
         self.verify_readback(0, 4096, "images/sector.bin")
         self.verify_readback(4096, 50*1024, "images/fifty_kb.bin")
 
-    @unittest.skipUnless(chip == 'esp32', 'ESP32 only')
+    @unittest.skipUnless(chip != 'esp8266', 'Added in ESP32')
     def test_compressed_nostub_flash(self):
         self.run_esptool("--no-stub write_flash -z 0x0 images/sector.bin 0x1000 images/fifty_kb.bin")
         self.verify_readback(0, 4096, "images/sector.bin")
@@ -350,7 +350,7 @@ class TestFlashSizes(EsptoolTestCase):
             # assume this is not the flash size in use
             image = "images/esp8266_sdk/boot_v1.4(b1).bin"
             offset = 0x0
-        elif chip == "esp32":
+        elif chip in ["esp32", "esp32s2beta"]:
             # this image is configured for 2MB flash by default,
             # assume this is not the flash size in use
             image = "images/bootloader.bin"
@@ -459,13 +459,13 @@ class TestKeepImageSettings(EsptoolTestCase):
     HEADER_ONLY = "images/image_header_only.bin"  # 8 byte file, contains image header
     def setUp(self):
         super(TestKeepImageSettings, self).setUp()
-        self.flash_offset = 0x1000 if chip == "esp32" else 0  # bootloader offset
+        self.flash_offset = 0 if chip == "esp8266" else 0x1000  # bootloader offset
         with open(self.HEADER_ONLY, "rb") as f:
             self.header = f.read(8)
 
     def test_keep_does_not_change_settings(self):
         # defaults should be keep, except for flash size which has to match header
-        flash_size = "1MB" if chip == "esp32" else "512KB"  # hex 0
+        flash_size = "512KB" if chip == "esp8266" else "1MB"  # hex 0
         self.run_esptool("write_flash -fs %s 0x%x %s" % (flash_size, self.flash_offset, self.HEADER_ONLY))
         self.verify_readback(self.flash_offset, 8, self.HEADER_ONLY, False)
         # can also explicitly set these options
@@ -496,7 +496,7 @@ class TestKeepImageSettings(EsptoolTestCase):
         self.assertEqual(self.header[1], readback[1])
         self.assertEqual(0, val(readback[2]))  # qio mode
         self.assertNotEqual(0, val(self.header[2]))
-        self.assertEqual(0x1f if chip == "esp32" else 0x3f, val(readback[3]))  # size_freq
+        self.assertEqual(0x3f if chip == "esp8266" else 0x1f, val(readback[3]))  # size_freq
         self.assertNotEqual(self.header[3], readback[3])
         self.assertEqual(self.header[4:], readback[4:])
         # verify_flash should pass if we match params, fail otherwise
@@ -505,6 +505,7 @@ class TestKeepImageSettings(EsptoolTestCase):
 
 
 class TestLoadRAM(EsptoolTestCase):
+    @unittest.skipIf(chip == "esp32s2beta", "TODO: write a IRAM test binary for esp32s2")
     def test_load_ram(self):
         """ Verify load_ram command
 

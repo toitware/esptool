@@ -30,14 +30,16 @@
 # or set them in a local.mk
 -include local.mk
 
-# Prefix for ESP8266 & ESP32 cross compilers (can include a directory path)
+# Prefix for each cross compiler (can include a directory path)
+# These can be overriden via environment variables or on the make command line
 CROSS_8266 ?= xtensa-lx106-elf-
 CROSS_32 ?= xtensa-esp32-elf-
+CROSS_32S2 ?= xtensa-esp32s2-elf-
 
 # Path to the ESP8266 SDK root dir
 SDK_PATH ?= ../../esp_iot_sdk_v2.0.0
 
-# Path to the esp-idf root dir
+# Path to the esp-idf root dir (must be a version with esp32s2 support)
 IDF_PATH ?= ../../esp-idf
 
 # Python command to invoke wrap_stub.py
@@ -56,6 +58,7 @@ BUILD_DIR = build
 
 STUB_ELF_8266 = $(BUILD_DIR)/$(STUB)_8266.elf
 STUB_ELF_32 = $(BUILD_DIR)/$(STUB)_32.elf
+STUB_ELF_32S2 = $(BUILD_DIR)/$(STUB)_32s2.elf
 STUB_PY = $(BUILD_DIR)/$(STUB)_snippet.py
 
 .PHONY: all clean
@@ -70,7 +73,8 @@ CFLAGS = -std=c99 -Wall -Werror -Os \
          -Wl,-static -g -ffunction-sections -Wl,--gc-sections
 
 CFLAGS_8266 = $(CFLAGS) -I$(SDK_PATH) -I$(SDK_PATH)/include -L$(SDK_PATH)/ld
-CFLAGS_32   = $(CFLAGS) -I$(IDF_PATH)/components/esp32/include -I$(IDF_PATH)/components/soc/esp32/include -L$(IDF_PATH)
+CFLAGS_32   = $(CFLAGS) -I$(IDF_PATH)/components/esp32/include -I$(IDF_PATH)/components/soc/esp32/include -I$(IDF_PATH)/components/esp_common/include
+CFLAGS_32S2   = $(CFLAGS) -I$(IDF_PATH)/components/esp32s2/include -I$(IDF_PATH)/components/soc/esp32s2beta/include  -I$(IDF_PATH)/components/esp_common/include
 
 $(STUB_ELF_8266): $(SRCS) $(SRCS_8266) $(BUILD_DIR) stub_8266.ld | Makefile
 	@echo "  CC(8266)   $^ -> $@"
@@ -80,7 +84,11 @@ $(STUB_ELF_32): $(SRCS) $(BUILD_DIR) stub_32.ld | Makefile
 	@echo "  CC(32)   $^ -> $@"
 	$(Q) $(CROSS_32)gcc $(CFLAGS_32) -DESP32 -Tstub_32.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^)
 
-$(STUB_PY): $(STUB_ELF_8266) $(STUB_ELF_32) wrap_stub.py
+$(STUB_ELF_32S2): $(SRCS) $(BUILD_DIR) stub_32s2.ld
+	@echo "  CC(32S2)   $^ -> $@"
+	$(Q) $(CROSS_32)gcc $(CFLAGS_32S2) -DESP32S2 -Tstub_32s2.ld -Wl,-Map=$(@:.elf=.map) -o $@ $(filter %.c, $^)
+
+$(STUB_PY): $(STUB_ELF_8266) $(STUB_ELF_32) $(STUB_ELF_32S2) wrap_stub.py
 	@echo "  WRAP $^ -> $@"
 	$(Q) $(WRAP_STUB) $(filter %.elf,$^) $@
 
