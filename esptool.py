@@ -1535,6 +1535,7 @@ class ImageSegment(object):
         self.data = data
         self.file_offs = file_offs
         self.include_in_checksum = True
+        self.name = ""
         if self.addr != 0:
             self.pad_to_alignment(4)  # pad all "real" ImageSegments 4 byte aligned length
 
