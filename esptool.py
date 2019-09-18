@@ -1395,6 +1395,7 @@ class ImageSegment(object):
         self.data = data
         self.file_offs = file_offs
         self.include_in_checksum = True
+        self.name = ""
         if self.addr != 0:
             self.pad_to_alignment(4)  # pad all "real" ImageSegments 4 byte aligned length
 
@@ -1475,32 +1476,28 @@ class BaseFirmwareImage(object):
             if offset > 0x40200000 or offset < 0x3ffe0000 or size > 65536:
                 print('WARNING: Suspicious segment 0x%x, length %d' % (offset, size))
 
-    def maybe_patch_segment_data(self, f, segment_data):
+    def maybe_patch_segment_data(self, f, segment_data, segment_name):
         """If SHA256 digest of the ELF file needs to be inserted into this segment, do so. Returns segment data."""
         segment_len = len(segment_data)
         file_pos = f.tell()  # file_pos is position in the .bin file
-        if self.elf_sha256_offset >= file_pos and self.elf_sha256_offset < file_pos + segment_len:
+        if segment_name == ".flash.rodata":
             # SHA256 digest needs to be patched into this binary segment,
-            # calculate offset of the digest inside the binary segment.
-            patch_offset = self.elf_sha256_offset - file_pos
             # Sanity checks
-            if patch_offset < self.SEG_HEADER_LEN or patch_offset + self.SHA256_DIGEST_LEN > segment_len:
-                raise FatalError('Cannot place SHA256 digest on segment boundary' +
-                                 '(elf_sha256_offset=%d, file_pos=%d, segment_size=%d)' %
-                                 (self.elf_sha256_offset, file_pos, segment_len))
-            if segment_data[patch_offset:patch_offset + self.SHA256_DIGEST_LEN] != b'\x00' * self.SHA256_DIGEST_LEN:
-                raise FatalError('Contents of segment at SHA256 digest offset 0x%x are not all zero. Refusing to overwrite.' %
-                                 self.elf_sha256_offset)
+            if self.elf_sha256_offset + self.SHA256_DIGEST_LEN > segment_len:
+                raise FatalError('No space for SHA256 digest in rodata section');
+            if segment_data[0:4] != b'\x32\x54\xCD\xAB':
+                raise FatalError('Did not find ESP_APP_DESC_MAGIC_WORD 0xABCD5432 in rodata section.');
+            if segment_data[self.elf_sha256_offset:self.elf_sha256_offset + self.SHA256_DIGEST_LEN] != b'\x00' * self.SHA256_DIGEST_LEN:
+                raise FatalError('Contents of segment at SHA256 digest offset 0x%x are not all zero. Refusing to overwrite.');
             assert(len(self.elf_sha256) == self.SHA256_DIGEST_LEN)
             # offset relative to the data part
-            patch_offset -= self.SEG_HEADER_LEN
-            segment_data = segment_data[0:patch_offset] + self.elf_sha256 + \
-                segment_data[patch_offset + self.SHA256_DIGEST_LEN:]
+            segment_data = segment_data[0:self.elf_sha256_offset] + self.elf_sha256 + \
+                segment_data[self.elf_sha256_offset + self.SHA256_DIGEST_LEN:]
         return segment_data
 
     def save_segment(self, f, segment, checksum=None):
         """ Save the next segment to the image file, return next checksum value if provided """
-        segment_data = self.maybe_patch_segment_data(f, segment.data)
+        segment_data = self.maybe_patch_segment_data(f, segment.data, segment.name)
         f.write(struct.pack('<II', segment.addr, len(segment_data)))
         f.write(segment_data)
         if checksum is not None:
